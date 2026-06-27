@@ -1,2 +1,2 @@
-example.com A
-melli.dev A
+a.example.com A
+b.example.com AAAA

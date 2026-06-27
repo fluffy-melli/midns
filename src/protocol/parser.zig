@@ -34,16 +34,16 @@ pub const Flags = struct {
     }
 
     pub fn encode(self: Flags) u16 {
-        const qr: u16 = @intFromEnum(self.qr) << 15;
-        const op: u16 = @intFromEnum(self.opcode) << 11;
-        const aa: u16 = @intFromEnum(self.aa) << 10;
-        const tc: u16 = @intFromEnum(self.tc) << 9;
-        const rd: u16 = @intFromEnum(self.rd) << 8;
-        const ra: u16 = @intFromEnum(self.ra) << 7;
-        const z: u16 = self.z << 4;
-        const rc: u16 = @intFromEnum(self.rcode);
+        const qr: u16 = @intCast(@intFromEnum(self.qr));
+        const op: u16 = @intCast(@intFromEnum(self.opcode));
+        const aa: u16 = @intCast(@intFromEnum(self.aa));
+        const tc: u16 = @intCast(@intFromEnum(self.tc));
+        const rd: u16 = @intCast(@intFromEnum(self.rd));
+        const ra: u16 = @intCast(@intFromEnum(self.ra));
+        const z: u16 = @intCast(self.z);
+        const rc: u16 = @intCast(@intFromEnum(self.rcode));
 
-        return qr | op | aa | tc | rd | ra | z | rc;
+        return qr << 15 | op << 11 | aa << 10 | tc << 9 | rd << 8 | ra << 7 | z << 4 | rc;
     }
 };
 

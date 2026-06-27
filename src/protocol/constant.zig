@@ -43,6 +43,7 @@ pub const RCODE = enum(u4) {
     NOTAUTH = 8,
     NOTZONE = 9,
 };
+
 pub const TYPE = enum(u16) {
     A = 1,
     NS = 2,

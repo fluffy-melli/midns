@@ -7,6 +7,8 @@ pub const TC = constant.TC;
 pub const RD = constant.RD;
 pub const RA = constant.RA;
 pub const RCODE = constant.RCODE;
+pub const TYPE = constant.TYPE;
+pub const CLASS = constant.CLASS;
 
 const parser = @import("parser.zig");
 

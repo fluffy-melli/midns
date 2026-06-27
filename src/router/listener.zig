@@ -36,23 +36,42 @@ pub const Listener = struct {
             var header = protocol.Header.decode(packet.data[0..12]);
             const question = protocol.Question.decode(packet.data[12..]);
 
-            const answer = protocol.Answer{
-                .name = &[_]u8{ 0xc0, 0x0c },
-                .type = .A,
-                .class = .IN,
-                .ttl = 300,
-                .data = &[_]u8{ 127, 0, 0, 1 },
-            };
-
+            header.flags.ra = .RecursionNotAvailable;
             header.flags.aa = .Authoritative;
-            header.flags.qr = .Response;
             header.flags.tc = .NotTruncated;
-            header.flags.rcode = .NOERROR;
+            header.flags.qr = .Response;
 
             header.qd = 1;
-            header.an = 1;
             header.ns = 0;
             header.ar = 0;
+
+            var data: std.ArrayList(u8) = .empty;
+            defer data.deinit(self.allocator);
+
+            switch (question.type) {
+                .A => {
+                    header.an = 1;
+                    header.flags.rcode = .NOERROR;
+                    try data.appendSlice(self.allocator, &[_]u8{ 127, 0, 0, 1 });
+                },
+                .AAAA => {
+                    header.an = 1;
+                    header.flags.rcode = .NOERROR;
+                    try data.appendSlice(self.allocator, &[_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 });
+                },
+                else => {
+                    header.an = 0;
+                    header.flags.rcode = .NOTIMP;
+                },
+            }
+
+            const answer = protocol.Answer{
+                .name = &[_]u8{ 0xc0, 0x0c },
+                .type = question.type,
+                .class = question.class,
+                .ttl = 300,
+                .data = data.items,
+            };
 
             var respond: std.ArrayList(u8) = .empty;
             defer respond.deinit(self.allocator);
@@ -63,12 +82,15 @@ pub const Listener = struct {
             const questionR = try question.encode(self.allocator);
             defer self.allocator.free(questionR);
 
-            const answerR = try answer.encode(self.allocator);
-            defer self.allocator.free(answerR);
-
             try respond.appendSlice(self.allocator, headerR);
             try respond.appendSlice(self.allocator, questionR);
-            try respond.appendSlice(self.allocator, answerR);
+
+            if (header.an > 0) {
+                const answerR = try answer.encode(self.allocator);
+                defer self.allocator.free(answerR);
+
+                try respond.appendSlice(self.allocator, answerR);
+            }
 
             try self.socket.send(
                 self.io,
