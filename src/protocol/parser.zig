@@ -12,27 +12,38 @@ pub const Flags = struct {
     rcode: constant.RCODE,
 
     pub fn decode(v: u16) Flags {
+        const qr: u1 = @truncate(v >> 15);
+        const op: u4 = @truncate(v >> 11);
+        const aa: u1 = @truncate(v >> 10);
+        const tc: u1 = @truncate(v >> 9);
+        const rd: u1 = @truncate(v >> 8);
+        const ra: u1 = @truncate(v >> 7);
+        const z: u3 = @truncate(v >> 4);
+        const rc: u1 = @truncate(v);
+
         return .{
-            .qr = @enumFromInt(@as(u1, @truncate(v >> 15))),
-            .opcode = @enumFromInt(@as(u4, @truncate(v >> 11))),
-            .aa = @enumFromInt(@as(u1, @truncate(v >> 10))),
-            .tc = @enumFromInt(@as(u1, @truncate(v >> 9))),
-            .rd = @enumFromInt(@as(u1, @truncate(v >> 8))),
-            .ra = @enumFromInt(@as(u1, @truncate(v >> 7))),
-            .z = @truncate(v >> 4),
-            .rcode = @enumFromInt(@as(u4, @truncate(v))),
+            .qr = @enumFromInt(qr),
+            .opcode = @enumFromInt(op),
+            .aa = @enumFromInt(aa),
+            .tc = @enumFromInt(tc),
+            .rd = @enumFromInt(rd),
+            .ra = @enumFromInt(ra),
+            .z = z,
+            .rcode = @enumFromInt(rc),
         };
     }
 
     pub fn encode(self: Flags) u16 {
-        return (@as(u16, @intFromEnum(self.qr)) << 15) |
-            (@as(u16, @intFromEnum(self.opcode)) << 11) |
-            (@as(u16, @intFromEnum(self.aa)) << 10) |
-            (@as(u16, @intFromEnum(self.tc)) << 9) |
-            (@as(u16, @intFromEnum(self.rd)) << 8) |
-            (@as(u16, @intFromEnum(self.ra)) << 7) |
-            (@as(u16, self.z) << 4) |
-            (@as(u16, @intFromEnum(self.rcode)));
+        const qr: u16 = @intFromEnum(self.qr) << 15;
+        const op: u16 = @intFromEnum(self.opcode) << 11;
+        const aa: u16 = @intFromEnum(self.aa) << 10;
+        const tc: u16 = @intFromEnum(self.tc) << 9;
+        const rd: u16 = @intFromEnum(self.rd) << 8;
+        const ra: u16 = @intFromEnum(self.ra) << 7;
+        const z: u16 = self.z << 4;
+        const rc: u16 = @intFromEnum(self.rcode);
+
+        return qr | op | aa | tc | rd | ra | z | rc;
     }
 };
 
@@ -45,15 +56,20 @@ pub const Header = struct {
     ar: u16,
 
     pub fn decode(v: []const u8) Header {
+        const id = std.mem.readInt(u16, v[0..2], .big);
+        const fl = std.mem.readInt(u16, v[2..4], .big);
+        const qd = std.mem.readInt(u16, v[4..6], .big);
+        const an = std.mem.readInt(u16, v[6..8], .big);
+        const ns = std.mem.readInt(u16, v[8..10], .big);
+        const ar = std.mem.readInt(u16, v[10..12], .big);
+
         return .{
-            .id = std.mem.readInt(u16, v[0..2], .big),
-            .flags = Flags.decode(
-                std.mem.readInt(u16, v[2..4], .big),
-            ),
-            .qd = std.mem.readInt(u16, v[4..6], .big),
-            .an = std.mem.readInt(u16, v[6..8], .big),
-            .ns = std.mem.readInt(u16, v[8..10], .big),
-            .ar = std.mem.readInt(u16, v[10..12], .big),
+            .id = id,
+            .flags = Flags.decode(fl),
+            .qd = qd,
+            .an = an,
+            .ns = ns,
+            .ar = ar,
         };
     }
 
@@ -152,28 +168,31 @@ pub const Answer = struct {
     pub fn decode(v: []const u8) Answer {
         var offset: usize = 0;
 
-        if ((v[0] & 0xc0) == 0xc0) {
-            offset = 2;
-        } else {
-            while (true) {
-                const label = v[offset];
+        while (true) {
+            const label = v[offset];
 
-                offset += 1;
-
-                if (label == 0) {
-                    break;
-                }
-
-                offset += label;
+            if ((label & 0xc0) == 0xc0) {
+                offset = 2;
+                break;
             }
+
+            offset += 1;
+
+            if (label == 0) {
+                break;
+            }
+
+            offset += label;
         }
 
         const name = v[0..offset];
 
         const types: constant.TYPE = @enumFromInt(std.mem.readInt(u16, v[offset..][0..2], .big));
         const class: constant.CLASS = @enumFromInt(std.mem.readInt(u16, v[offset..][2..4], .big));
+
         const ttl = std.mem.readInt(u32, v[offset..][4..8], .big);
         const len = std.mem.readInt(u16, v[offset..][8..10], .big);
+
         const data = v[offset + 10 .. offset + len + 10];
 
         return .{
