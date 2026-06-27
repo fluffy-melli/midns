@@ -58,10 +58,8 @@ pub const Header = struct {
     }
 
     pub fn encode(self: Header, allocator: std.mem.Allocator) ![]u8 {
-        var respond: std.ArrayList(u8) = .empty;
-        errdefer respond.deinit(allocator);
+        const buffer = try allocator.alloc(u8, 12);
 
-        var buffer: [12]u8 = undefined;
         std.mem.writeInt(u16, buffer[0..2], self.id, .big);
         std.mem.writeInt(u16, buffer[2..4], self.flags.encode(), .big);
         std.mem.writeInt(u16, buffer[4..6], self.qd, .big);
@@ -69,53 +67,53 @@ pub const Header = struct {
         std.mem.writeInt(u16, buffer[8..10], self.ns, .big);
         std.mem.writeInt(u16, buffer[10..12], self.ar, .big);
 
-        try respond.appendSlice(allocator, &buffer);
-        return try respond.toOwnedSlice(allocator);
+        return buffer;
     }
 };
 
 pub const Question = struct {
     raw: []const u8,
-    type: u16,
-    class: u16,
+    type: constant.TYPE,
+    class: constant.CLASS,
 
     pub fn decode(v: []const u8) Question {
+        var len: usize = 0;
         var index: usize = 0;
-        var name_len: usize = 0;
 
         while (true) {
-            const label_len = v[index];
-            if (label_len == 0) {
-                name_len += 1;
-                index += 1;
+            const label = v[index];
+
+            len += 1;
+            index += 1;
+
+            if (label == 0) {
                 break;
             }
-            name_len += 1 + label_len;
-            index += 1 + label_len;
+
+            len += label;
+            index += label;
         }
 
-        const type_bytes = v[name_len..][0..2];
-        const class_bytes = v[name_len + 2 ..][0..2];
+        const types = v[len..][0..2];
+        const class = v[len + 2 ..][0..2];
 
         return Question{
-            .raw = v[0..name_len],
-            .type = std.mem.readInt(u16, type_bytes, .big),
-            .class = std.mem.readInt(u16, class_bytes, .big),
+            .raw = v[0..len],
+            .type = @enumFromInt(std.mem.readInt(u16, types, .big)),
+            .class = @enumFromInt(std.mem.readInt(u16, class, .big)),
         };
     }
 
     pub fn encode(self: Question, allocator: std.mem.Allocator) ![]u8 {
-        var respond: std.ArrayList(u8) = .empty;
-        errdefer respond.deinit(allocator);
+        const buffer = try allocator.alloc(u8, self.raw.len + 4);
 
-        var buffer: [4]u8 = undefined;
-        std.mem.writeInt(u16, buffer[0..2], self.type, .big);
-        std.mem.writeInt(u16, buffer[2..4], self.class, .big);
+        @memcpy(buffer[0..self.raw.len], self.raw);
 
-        try respond.appendSlice(allocator, self.raw);
-        try respond.appendSlice(allocator, &buffer);
+        const offset = self.raw.len;
+        std.mem.writeInt(u16, buffer[offset..][0..2], @intFromEnum(self.type), .big);
+        std.mem.writeInt(u16, buffer[offset + 2 ..][0..2], @intFromEnum(self.class), .big);
 
-        return try respond.toOwnedSlice(allocator);
+        return buffer;
     }
 
     pub fn getName(self: Question, allocator: std.mem.Allocator) ![]u8 {
@@ -124,8 +122,9 @@ pub const Question = struct {
 
         var index: usize = 0;
         while (index < self.raw.len) {
-            const label_len = self.raw[index];
-            if (label_len == 0) {
+            const label = self.raw[index];
+
+            if (label == 0) {
                 break;
             }
 
@@ -135,8 +134,8 @@ pub const Question = struct {
                 try respond.append(allocator, '.');
             }
 
-            try respond.appendSlice(allocator, self.raw[index .. index + label_len]);
-            index += label_len;
+            try respond.appendSlice(allocator, self.raw[index .. index + label]);
+            index += label;
         }
 
         return respond.toOwnedSlice(allocator);
@@ -145,25 +144,60 @@ pub const Question = struct {
 
 pub const Answer = struct {
     name: []const u8,
-    type: u16,
-    class: u16,
+    type: constant.TYPE,
+    class: constant.CLASS,
     ttl: u32,
-    rdata: []const u8,
+    data: []const u8,
+
+    pub fn decode(v: []const u8) Answer {
+        var offset: usize = 0;
+
+        if ((v[0] & 0xc0) == 0xc0) {
+            offset = 2;
+        } else {
+            while (true) {
+                const label = v[offset];
+
+                offset += 1;
+
+                if (label == 0) {
+                    break;
+                }
+
+                offset += label;
+            }
+        }
+
+        const name = v[0..offset];
+
+        const types: constant.TYPE = @enumFromInt(std.mem.readInt(u16, v[offset..][0..2], .big));
+        const class: constant.CLASS = @enumFromInt(std.mem.readInt(u16, v[offset..][2..4], .big));
+        const ttl = std.mem.readInt(u32, v[offset..][4..8], .big);
+        const len = std.mem.readInt(u16, v[offset..][8..10], .big);
+        const data = v[offset + 10 .. offset + len + 10];
+
+        return .{
+            .name = name,
+            .type = types,
+            .class = class,
+            .ttl = ttl,
+            .data = data,
+        };
+    }
 
     pub fn encode(self: Answer, allocator: std.mem.Allocator) ![]u8 {
-        var respond: std.ArrayList(u8) = .empty;
-        errdefer respond.deinit(allocator);
+        const buffer = try allocator.alloc(u8, self.name.len + self.data.len + 10);
 
-        var buffer: [10]u8 = undefined;
-        std.mem.writeInt(u16, buffer[0..2], self.type, .big);
-        std.mem.writeInt(u16, buffer[2..4], self.class, .big);
-        std.mem.writeInt(u32, buffer[4..8], self.ttl, .big);
-        std.mem.writeInt(u16, buffer[8..10], @intCast(self.rdata.len), .big);
+        @memcpy(buffer[0..self.name.len], self.name);
 
-        try respond.appendSlice(allocator, self.name);
-        try respond.appendSlice(allocator, &buffer);
-        try respond.appendSlice(allocator, self.rdata);
+        const offset: usize = self.name.len;
+        std.mem.writeInt(u16, buffer[offset..][0..2], @intFromEnum(self.type), .big);
+        std.mem.writeInt(u16, buffer[offset..][2..4], @intFromEnum(self.class), .big);
+        std.mem.writeInt(u32, buffer[offset..][4..8], self.ttl, .big);
+        std.mem.writeInt(u16, buffer[offset..][8..10], @intCast(self.data.len), .big);
 
-        return try respond.toOwnedSlice(allocator);
+        @memcpy(buffer[offset + 10 .. offset + self.data.len + 10], self.data);
+
+        return buffer;
     }
 };

@@ -10,16 +10,32 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const router = b.addModule("router", .{
+        .root_source_file = b.path("src/router/_.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{
+                .name = "protocol",
+                .module = protocol,
+            },
+        },
+    });
+
     const exe = b.addExecutable(.{
         .name = "midns",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/main.zig"),
             .target = target,
             .optimize = optimize,
+            .imports = &.{
+                .{
+                    .name = "router",
+                    .module = router,
+                },
+            },
         }),
     });
-
-    exe.root_module.addImport("protocol", protocol);
 
     b.installArtifact(exe);
 
