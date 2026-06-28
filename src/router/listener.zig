@@ -102,29 +102,20 @@ pub const Listener = struct {
             .data = data.items,
         };
 
-        var respond: std.ArrayList(u8) = .empty;
-        defer respond.deinit(self.allocator);
+        var buffer: [512]u8 = undefined;
+        var stdout = std.Io.File.stdout().writer(self.io, &buffer);
 
-        const headerR = try header.encode(self.allocator);
-        defer self.allocator.free(headerR);
-
-        const questionR = try question.encode(self.allocator);
-        defer self.allocator.free(questionR);
-
-        try respond.appendSlice(self.allocator, headerR);
-        try respond.appendSlice(self.allocator, questionR);
+        try header.encode(&stdout.interface);
+        try question.encode(&stdout.interface);
 
         if (header.an > 0) {
-            const answerR = try answer.encode(self.allocator);
-            defer self.allocator.free(answerR);
-
-            try respond.appendSlice(self.allocator, answerR);
+            try answer.encode(&stdout.interface);
         }
 
         try self.socket.send(
             self.io,
             &packet.from,
-            respond.items,
+            &buffer,
         );
     }
 };

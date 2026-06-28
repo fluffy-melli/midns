@@ -73,8 +73,8 @@ pub const Header = struct {
         };
     }
 
-    pub fn encode(self: Header, allocator: std.mem.Allocator) ![]u8 {
-        const buffer = try allocator.alloc(u8, 12);
+    pub fn encode(self: Header, writer: *std.Io.Writer) !void {
+        var buffer: [12]u8 = undefined;
 
         std.mem.writeInt(u16, buffer[0..2], self.id, .big);
         std.mem.writeInt(u16, buffer[2..4], self.flags.encode(), .big);
@@ -83,7 +83,7 @@ pub const Header = struct {
         std.mem.writeInt(u16, buffer[8..10], self.ns, .big);
         std.mem.writeInt(u16, buffer[10..12], self.ar, .big);
 
-        return buffer;
+        try writer.writeAll(&buffer);
     }
 };
 
@@ -120,16 +120,14 @@ pub const Question = struct {
         };
     }
 
-    pub fn encode(self: Question, allocator: std.mem.Allocator) ![]u8 {
-        const buffer = try allocator.alloc(u8, self.raw.len + 4);
+    pub fn encode(self: Question, writer: *std.Io.Writer) !void {
+        var buffer: [4]u8 = undefined;
 
-        @memcpy(buffer[0..self.raw.len], self.raw);
+        std.mem.writeInt(u16, buffer[0..2], @intFromEnum(self.type), .big);
+        std.mem.writeInt(u16, buffer[2..4], @intFromEnum(self.class), .big);
 
-        const offset = self.raw.len;
-        std.mem.writeInt(u16, buffer[offset..][0..2], @intFromEnum(self.type), .big);
-        std.mem.writeInt(u16, buffer[offset + 2 ..][0..2], @intFromEnum(self.class), .big);
-
-        return buffer;
+        try writer.writeAll(self.raw);
+        try writer.writeAll(&buffer);
     }
 
     pub fn getName(self: Question, allocator: std.mem.Allocator) ![]u8 {
@@ -204,19 +202,16 @@ pub const Answer = struct {
         };
     }
 
-    pub fn encode(self: Answer, allocator: std.mem.Allocator) ![]u8 {
-        const buffer = try allocator.alloc(u8, self.name.len + self.data.len + 10);
+    pub fn encode(self: Answer, writer: *std.Io.Writer) !void {
+        var buffer: [10]u8 = undefined;
 
-        @memcpy(buffer[0..self.name.len], self.name);
+        std.mem.writeInt(u16, buffer[0..2], @intFromEnum(self.type), .big);
+        std.mem.writeInt(u16, buffer[2..4], @intFromEnum(self.class), .big);
+        std.mem.writeInt(u32, buffer[4..8], self.ttl, .big);
+        std.mem.writeInt(u16, buffer[8..10], @intCast(self.data.len), .big);
 
-        const offset: usize = self.name.len;
-        std.mem.writeInt(u16, buffer[offset..][0..2], @intFromEnum(self.type), .big);
-        std.mem.writeInt(u16, buffer[offset..][2..4], @intFromEnum(self.class), .big);
-        std.mem.writeInt(u32, buffer[offset..][4..8], self.ttl, .big);
-        std.mem.writeInt(u16, buffer[offset..][8..10], @intCast(self.data.len), .big);
-
-        @memcpy(buffer[offset + 10 .. offset + self.data.len + 10], self.data);
-
-        return buffer;
+        try writer.writeAll(self.name);
+        try writer.writeAll(&buffer);
+        try writer.writeAll(self.data);
     }
 };
