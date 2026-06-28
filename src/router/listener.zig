@@ -112,10 +112,13 @@ pub const Listener = struct {
             try answer.encode(&stdout.interface);
         }
 
+        const len = stdout.interface.end;
+        const bytes = buffer[0..len];
+
         try self.socket.send(
             self.io,
             &packet.from,
-            &buffer,
+            bytes,
         );
     }
 };
